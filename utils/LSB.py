@@ -84,7 +84,7 @@ def INVERSE_LSB_pipeline(image:cv2.Mat):
     return final_text
 
 
-# Get the image difference (convinving purposes to user that image is embedded)
+# Get the image difference (convincing purposes to user that image is embedded)
 def stats(og:cv2.Mat, enc:cv2.Mat):
     def mse(img_a: cv2.Mat, img_b: cv2.Mat):
         err = np.sum((img_a - img_b) ** 2)
