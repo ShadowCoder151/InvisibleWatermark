@@ -1,5 +1,6 @@
 import cv2
 from typing import List
+import numpy as np
 
 
 def LSB_pipeline(image:cv2.Mat, text:str):
@@ -83,6 +84,19 @@ def INVERSE_LSB_pipeline(image:cv2.Mat):
     return final_text
 
 
+# Get the image difference (convinving purposes to user that image is embedded)
+def stats(og:cv2.Mat, enc:cv2.Mat):
+    def mse(img_a: cv2.Mat, img_b: cv2.Mat):
+        err = np.sum((img_a - img_b) ** 2)
+        err /= float(img_a.shape[0] * img_b.shape[1])
+        return err
+    
+
+    mse_val = mse(og, enc)
+    if mse_val == 0:
+        return 100
+    
+    return 20 * np.log10(255.0/np.sqrt(mse_val))
 
 
 image = cv2.imread('./input/image1.png')
@@ -93,6 +107,8 @@ text = "I am a good boy..."
 res = LSB_pipeline(image, text)
 cv2.imshow('Original', image)
 cv2.imshow('Image after embedding', res)
+
+print(stats(image, res))
 
 cv2.imwrite('./output/image_encode.jpg', res)
 cv2.waitKey(0)
