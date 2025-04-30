@@ -13,7 +13,7 @@ def LSB_pipeline(image:cv2.Mat, text:str):
 
     def get_binary(text:str):
         length = len(text)
-        arr = []
+        arr = [bin(length)[2:].zfill(16)]
         for ch in text:
             co = bin(ord(ch))[2:].zfill(8)
             arr.append(co)
@@ -23,24 +23,39 @@ def LSB_pipeline(image:cv2.Mat, text:str):
     def lsb_mark(image: cv2.Mat, binary:str, key:int):
         random.seed(key)
 
-        # Get the dimensions of the image
         h, w, ch = image.shape
-        image = image.copy()
+        total_bits = h * w * ch
+        image_marked = image.copy()
 
-        pos = random.sample(range(h * w * ch), len(binary))
+        header_bits = binary[:16]
+        idx = 0
+        for y in range(h):
+            for x in range(w):
+                for c in range(ch):
+                    if idx < 16:
+                        image_marked[y, x, c] = (image_marked[y, x, c] & 0xFE) | int(header_bits[idx])
+                        idx += 1
+                    else:
+                        break
+                if idx >= 16:
+                    break
+            if idx >= 16:
+                break
 
+        payload_bits = binary[16:]
+        if len(payload_bits) > total_bits - 16:
+            raise ValueError("Not enough capacity for payload bits")
+
+        positions = random.sample(range(16, total_bits), len(payload_bits))
         idx3 = lambda val: ((val // ch) // w, (val // ch) % w, val % ch)
 
-        # Modify LSB
-        point = 0
-        length = len(binary)
-        for idx, point in enumerate(pos):
-            y, x, z = idx3(point)
-            image[y, x, z] = (image[y, x, z] & 0xFE) | int(binary[idx])
-        
-        return image
+        for i, bit in enumerate(payload_bits):
+            y, x, c = idx3(positions[i])
+            image_marked[y, x, c] = (image_marked[y, x, c] & 0xFE) | int(bit)
+
+        return image_marked
     
-    text_size = len(text) * 8
+    text_size = 16 + len(text) * 8
     img_size = image.size
 
     if text_size > img_size:
@@ -49,32 +64,46 @@ def LSB_pipeline(image:cv2.Mat, text:str):
     key = generate_secret_key()
     bin_text = get_binary(text)
     new_img = lsb_mark(image, bin_text, key)
-    return new_img
+    return new_img, key
 
 
-def INVERSE_LSB_pipeline(image:cv2.Mat):
+def INVERSE_LSB_pipeline(image:cv2.Mat, key:int):
     # Extract the bit stream
-    def extract_stream(image:cv2.Mat):
-        arr = []
-        bit_length, point = 0, -1
+    def extract_stream(image:cv2.Mat, key:int):
+        random.seed(key)
+        h, w, ch = image.shape
+        total_bits = h * w * ch
 
-        flag = False
-        h, w, c = image.shape
+        # Read the first 16 bits sequentially to get length
+        header = []
+        idx = 0
         for y in range(h):
             for x in range(w):
-                pixel  = image[y, x]
-                for z in range(3):
-                    arr.append(str(pixel[z] & 1))
-                    if len(arr) == 16 and point == -1:
-                        bit_length = int(''.join(arr), 2)
-                        arr = []
-                        flag = True
-                    point += flag
-                    if point == bit_length:
-                        return arr
+                for c in range(ch):
+                    if idx < 16:
+                        header.append(str(image[y, x, c] & 1))
+                        idx += 1
+                    else:
+                        break
+                if idx >= 16:
+                    break
+            if idx >= 16:
+                break
+
+        payload_length = int(''.join(header), 2) * 8
+        # Sample same random positions for payload
+        positions = random.sample(range(16, total_bits), payload_length)
+        idx3 = lambda val: ((val // ch) // w, (val // ch) % w, val % ch)
+
+        bits = []
+        for pos in positions:
+            y, x, c = idx3(pos)
+            bits.append(str(image[y, x, c] & 1))
+
+        return bits
 
     # Process the bit stream and extract the text
-    def process_stream(stream: List[int]):
+    def process_stream(stream: List[str]):
         string = []
         for i in range(0, len(stream), 8):
             byte = ''.join(stream[i:i+8])
@@ -85,7 +114,7 @@ def INVERSE_LSB_pipeline(image:cv2.Mat):
         return ''.join(string)
     
 
-    stream = extract_stream(image)
+    stream = extract_stream(image, key)
     final_text = process_stream(stream)
 
     return final_text
@@ -111,15 +140,15 @@ image = cv2.imread('./input/image1.png')
 text = "I am a good boy..."
 
 
-res = LSB_pipeline(image, text)
+res , key= LSB_pipeline(image, text)
 cv2.imshow('Original', image)
 cv2.imshow('Image after embedding', res)
 
-# print(stats(image, res))
+print(stats(image, res))
 
 # cv2.imwrite('./output/image_encode.jpg', res)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
-# print('Text extracted: ', INVERSE_LSB_pipeline(res))
+print('Text extracted: ', INVERSE_LSB_pipeline(res, key))
 
